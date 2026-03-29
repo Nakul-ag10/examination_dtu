@@ -1,44 +1,63 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+import { authApi } from '../lib/api';
 
-export type UserRole = 'Admin' | 'Time Table Incharge' | 'Faculty' | null;
+export type UserRole = 'admin' | 'hod' | 'ee_incharge' | 'examiner' | 'faculty' | null;
 
 interface User {
-  username: string;
-  role: UserRole;
+  userId: string;
+  name: string;
+  email: string;
+  roles: string[];
+  department?: string;
 }
 
 interface AuthContextType {
   user: User | null;
-  login: (username: string, password: string, role: UserRole) => Promise<void>;
+  login: (email: string, password: string) => Promise<void>;
   logout: () => void;
   isAuthenticated: boolean;
+  hasRole: (role: string) => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
-
-  const login = async (username: string, password: string, role: UserRole) => {
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    // For demo purposes, accept any credentials
-    if (username && password && role) {
-      setUser({ username, role });
-    } else {
-      throw new Error('Invalid credentials');
+  const [user, setUser] = useState<User | null>(() => {
+    try {
+      const stored = localStorage.getItem('dtu_user');
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
     }
+  });
+
+  const login = async (email: string, password: string) => {
+    const data = await authApi.login(email, password);
+    localStorage.setItem('dtu_token', data.access_token);
+    const u: User = {
+      userId: data.user_id,
+      name: data.user_name,
+      email: data.email,
+      roles: data.roles,
+      department: data.department,
+    };
+    localStorage.setItem('dtu_user', JSON.stringify(u));
+    setUser(u);
   };
 
   const logout = () => {
+    authApi.logout().catch(() => {});
+    localStorage.removeItem('dtu_token');
+    localStorage.removeItem('dtu_user');
     setUser(null);
   };
 
-  const isAuthenticated = user !== null;
+  const hasRole = (role: string) => user?.roles?.includes(role) ?? false;
+
+  const isAuthenticated = user !== null && !!localStorage.getItem('dtu_token');
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, isAuthenticated }}>
+    <AuthContext.Provider value={{ user, login, logout, isAuthenticated, hasRole }}>
       {children}
     </AuthContext.Provider>
   );
